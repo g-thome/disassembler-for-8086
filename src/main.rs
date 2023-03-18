@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::env;
 use std::fs::read;
 
@@ -47,7 +46,11 @@ fn as_mov_enum(byte: u8) -> Option<Mov> {
     None
 }
 
-fn parse_register_or_memory_to_or_from_register(first_byte: u8, second_byte: u8) -> String {
+fn parse_register_or_memory_to_or_from_register(bytes: &Vec<u8>, cursor: &mut usize) -> String {
+    let first_byte = bytes[*cursor];
+    let second_byte = bytes[*cursor + 1];
+    *cursor += 2;
+
     let d_bit = first_byte & 0x2;
     let w_bit = first_byte & 0x1;
 
@@ -62,10 +65,41 @@ fn parse_register_or_memory_to_or_from_register(first_byte: u8, second_byte: u8)
     let destination = if d_bit == 1 { reg } else { rm };
     let source = if d_bit == 1 { rm } else { reg };
 
-    let source_register = if w_bit == 1 { WORD_REGISTERS[source as usize] } else { BYTE_REGISTERS[source as usize] };
-    let destination_register = if w_bit == 1 { WORD_REGISTERS[destination as usize] } else { BYTE_REGISTERS[destination as usize] };
+    let source_register = if w_bit == 1 {
+        WORD_REGISTERS[source as usize]
+    } else {
+        BYTE_REGISTERS[source as usize]
+    };
+    let destination_register = if w_bit == 1 {
+        WORD_REGISTERS[destination as usize]
+    } else {
+        BYTE_REGISTERS[destination as usize]
+    };
 
     String::from(format!("mov {destination_register}, {source_register}"))
+}
+
+fn parse_immediate_to_register(bytes: &Vec<u8>, cursor: &mut usize) -> String {
+    let first_byte = bytes[*cursor];
+    let second_byte = bytes[*cursor + 1];
+    let third_byte = bytes[*cursor + 2];
+
+    let w_bit = (first_byte >> 3) & 0x1;
+    let register_bits = first_byte & 0x07;
+    let immediate: u16;
+    let register: &str;
+
+    if w_bit == 1 {
+        *cursor += 3;
+        immediate = u16::from_ne_bytes([second_byte, third_byte]);
+        register = WORD_REGISTERS[register_bits as usize];
+    } else {
+        *cursor += 2;
+        immediate = second_byte as u16;
+        register = BYTE_REGISTERS[register_bits as usize];
+    }
+
+    format!("mov {register}, {immediate}")
 }
 
 fn main() {
@@ -80,9 +114,8 @@ fn main() {
     let mut cursor = 0;
     let mut asm = String::from("bits 16\n\n");
     while cursor < file.len() {
-        cursor += 2;
-        let first_byte = file[cursor - 2];
-        let second_byte = file[cursor - 1];
+        println!("asm: {asm}");
+        let first_byte = file[cursor];
 
         let op = as_mov_enum(first_byte)
             .expect("Unrecognized op code. Only mov operations are supported");
@@ -90,9 +123,19 @@ fn main() {
         match op {
             Mov::RegisterOrMemoryToOrFromRegister => {
                 asm.push_str("\n");
-                asm.push_str(&parse_register_or_memory_to_or_from_register(first_byte, second_byte));
+                asm.push_str(&parse_register_or_memory_to_or_from_register(
+                    &file,
+                    &mut cursor,
+                ));
             }
-            _ => {}
+            Mov::ImmediateToRegister => {
+                asm.push_str("\n");
+                asm.push_str(&parse_immediate_to_register(&file, &mut cursor));
+            }
+            _ => {
+                asm.push_str("\n");
+                asm.push_str("unimplemented");
+            }
         }
     }
 
