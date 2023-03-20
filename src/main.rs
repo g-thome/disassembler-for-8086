@@ -110,7 +110,6 @@ fn parse_register_or_memory_to_or_from_register(bytes: &Vec<u8>, cursor: &mut us
                     let disp_hi = bytes[*cursor + 1];
                     *cursor += 2;
 
-                    let is_displacement_signed = ((disp_lo >> 7) & 0x1) == 1;
                     let displacement = i16::from_ne_bytes([disp_lo, disp_hi]);
                     format!("[{displacement}]")
                 }
@@ -127,7 +126,6 @@ fn parse_register_or_memory_to_or_from_register(bytes: &Vec<u8>, cursor: &mut us
             rm_address_calculation_displaced(&rm_bits, &(displacement as i16))
         }
         0x2 => {
-            let is_displacement_signed = ((bytes[*cursor] >> 7) & 0x1) == 1;
             let displacement = i16::from_ne_bytes([bytes[*cursor], bytes[*cursor + 1]]);
             *cursor += 2;
             rm_address_calculation_displaced(&rm_bits, &displacement)
@@ -174,7 +172,6 @@ fn parse_immediate_to_register_or_memory(bytes: &Vec<u8>, cursor: &mut usize) ->
     let r#mod = (second_byte >> 6) & 0x03;
     let rm_bits = second_byte & 0x07;
     let immediate: u16;
-    let rm: &str;
 
     let rm = match r#mod {
         0x0 => {
@@ -198,7 +195,6 @@ fn parse_immediate_to_register_or_memory(bytes: &Vec<u8>, cursor: &mut usize) ->
                     let disp_hi = bytes[*cursor + 1];
                     *cursor += 2;
 
-                    let is_displacement_signed = ((disp_lo >> 7) & 0x1) == 1;
                     let displacement = i16::from_ne_bytes([disp_lo, disp_hi]);
                     format!("[{displacement}]")
                 }
@@ -221,7 +217,6 @@ fn parse_immediate_to_register_or_memory(bytes: &Vec<u8>, cursor: &mut usize) ->
             let disp_hi = bytes[*cursor + 1];
             *cursor += 2;
 
-            let is_displacement_signed = ((disp_lo >> 7) & 0x1) == 1;
             let displacement = i16::from_ne_bytes([disp_lo, disp_hi]);
             rm_address_calculation_displaced(&rm_bits, &displacement)
         }
@@ -236,7 +231,7 @@ fn parse_immediate_to_register_or_memory(bytes: &Vec<u8>, cursor: &mut usize) ->
         _ => panic!(),
     };
 
-    let mut size = "";
+    let size;
     if w_bit == 1 {
         let data_lo = bytes[*cursor];
         let data_hi = bytes[*cursor + 1];
