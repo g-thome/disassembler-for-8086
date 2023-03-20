@@ -12,20 +12,22 @@ const RM_ADDRESS_CALCULATION_ENCODINGS: [&str; 8] = [
     "[bp + di]",
     "[si]",
     "[di]",
-    "", // to own the libs
+    "[bp]",
     "[bx]",
 ];
 
-fn rm_address_calculation_displaced(rm_bits: &u8, displacement: &u16) -> String {
+fn rm_address_calculation_displaced(rm_bits: &u8, displacement: &i16) -> String {
+    let sign = if displacement > &1 { "+" } else { "-" };
+    let abs_displacement = displacement.abs();
     match rm_bits {
-        0x0 => format!("[bx + si + {displacement}]"),
-        0x1 => format!("[bx + di + {displacement}]"),
-        0x2 => format!("[bp + si + {displacement}]"),
-        0x3 => format!("[bp + di + {displacement}]"),
-        0x4 => format!("[si + {displacement}]"),
-        0x5 => format!("[di + {displacement}]"),
-        0x6 => format!("[bp + {displacement}]"),
-        0x7 => format!("[bx + {displacement}]"),
+        0x0 => format!("[bx + si {sign} {abs_displacement}]"),
+        0x1 => format!("[bx + di {sign} {abs_displacement}]"),
+        0x2 => format!("[bp + si {sign} {abs_displacement}]"),
+        0x3 => format!("[bp + di {sign} {abs_displacement}]"),
+        0x4 => format!("[si {sign} {abs_displacement}]"),
+        0x5 => format!("[di {sign} {abs_displacement}]"),
+        0x6 => format!("[bp {sign} {abs_displacement}]"),
+        0x7 => format!("[bx {sign} {abs_displacement}]"),
         _ => "".to_owned(),
     }
 }
@@ -87,14 +89,46 @@ fn parse_register_or_memory_to_or_from_register(bytes: &Vec<u8>, cursor: &mut us
     let register = REGISTER_ENCODINGS[w_bit as usize][register_bits as usize];
 
     let rm = match r#mod {
-        0x0 => RM_ADDRESS_CALCULATION_ENCODINGS[rm_bits as usize].to_owned(),
+        0x0 => {
+            if rm_bits != 0x6 {
+                RM_ADDRESS_CALCULATION_ENCODINGS[rm_bits as usize].to_owned()
+            } else {
+                if w_bit == 0 {
+                    let disp_lo = bytes[*cursor];
+                    *cursor += 1;
+
+                    let is_displacement_signed = ((disp_lo >> 7) & 0x1) == 1;
+                    let displacement = if is_displacement_signed {
+                        (disp_lo.wrapping_neg() as i16) * -1
+                    } else {
+                        disp_lo as i16
+                    };
+
+                    format!("[{displacement}]")
+                } else {
+                    let disp_lo = bytes[*cursor];
+                    let disp_hi = bytes[*cursor + 1];
+                    *cursor += 2;
+
+                    let is_displacement_signed = ((disp_lo >> 7) & 0x1) == 1;
+                    let displacement = i16::from_ne_bytes([disp_lo, disp_hi]);
+                    format!("[{displacement}]")
+                }
+            }
+        }
         0x1 => {
-            let displacement = bytes[*cursor];
+            let is_displacement_signed = ((bytes[*cursor] >> 7) & 0x1) == 1;
+            let displacement = if is_displacement_signed {
+                (bytes[*cursor].wrapping_neg() as i16) * -1
+            } else {
+                bytes[*cursor] as i16
+            };
             *cursor += 1;
-            rm_address_calculation_displaced(&rm_bits, &(displacement as u16))
+            rm_address_calculation_displaced(&rm_bits, &(displacement as i16))
         }
         0x2 => {
-            let displacement = u16::from_ne_bytes([bytes[*cursor], bytes[*cursor + 1]]);
+            let is_displacement_signed = ((bytes[*cursor] >> 7) & 0x1) == 1;
+            let displacement = i16::from_ne_bytes([bytes[*cursor], bytes[*cursor + 1]]);
             *cursor += 2;
             rm_address_calculation_displaced(&rm_bits, &displacement)
         }
@@ -131,6 +165,139 @@ fn parse_immediate_to_register(bytes: &Vec<u8>, cursor: &mut usize) -> String {
     format!("mov {register}, {immediate}")
 }
 
+fn parse_immediate_to_register_or_memory(bytes: &Vec<u8>, cursor: &mut usize) -> String {
+    let first_byte = bytes[*cursor];
+    let second_byte = bytes[*cursor + 1];
+    *cursor += 2;
+
+    let w_bit = first_byte & 0x1;
+    let r#mod = (second_byte >> 6) & 0x03;
+    let rm_bits = second_byte & 0x07;
+    let immediate: u16;
+    let rm: &str;
+
+    let rm = match r#mod {
+        0x0 => {
+            if rm_bits != 0x6 {
+                RM_ADDRESS_CALCULATION_ENCODINGS[rm_bits as usize].to_owned()
+            } else {
+                if w_bit == 0 {
+                    let disp_lo = bytes[*cursor];
+                    *cursor += 1;
+
+                    let is_displacement_signed = ((disp_lo >> 7) & 0x1) == 1;
+                    let displacement = if is_displacement_signed {
+                        (disp_lo.wrapping_neg() as i16) * -1
+                    } else {
+                        disp_lo as i16
+                    };
+
+                    format!("[{displacement}]")
+                } else {
+                    let disp_lo = bytes[*cursor];
+                    let disp_hi = bytes[*cursor + 1];
+                    *cursor += 2;
+
+                    let is_displacement_signed = ((disp_lo >> 7) & 0x1) == 1;
+                    let displacement = i16::from_ne_bytes([disp_lo, disp_hi]);
+                    format!("[{displacement}]")
+                }
+            }
+        }
+        0x1 => {
+            let disp_lo = bytes[*cursor];
+            *cursor += 1;
+
+            let is_displacement_signed = ((disp_lo >> 7) & 0x1) == 1;
+            let displacement = if is_displacement_signed {
+                (disp_lo.wrapping_neg() as i16) * -1
+            } else {
+                disp_lo as i16
+            };
+            rm_address_calculation_displaced(&rm_bits, &(displacement as i16))
+        }
+        0x2 => {
+            let disp_lo = bytes[*cursor];
+            let disp_hi = bytes[*cursor + 1];
+            *cursor += 2;
+
+            let is_displacement_signed = ((disp_lo >> 7) & 0x1) == 1;
+            let displacement = i16::from_ne_bytes([disp_lo, disp_hi]);
+            rm_address_calculation_displaced(&rm_bits, &displacement)
+        }
+        0x3 => {
+            *cursor += 1;
+            if w_bit == 1 {
+                WORD_REGISTERS[rm_bits as usize].to_owned()
+            } else {
+                BYTE_REGISTERS[rm_bits as usize].to_owned()
+            }
+        }
+        _ => panic!(),
+    };
+
+    let mut size = "";
+    if w_bit == 1 {
+        let data_lo = bytes[*cursor];
+        let data_hi = bytes[*cursor + 1];
+        *cursor += 2;
+
+        immediate = u16::from_ne_bytes([data_lo, data_hi]);
+        size = "word ";
+    } else {
+        let data_lo = bytes[*cursor];
+        *cursor += 1;
+
+        immediate = data_lo as u16;
+        size = "byte ";
+    }
+
+    format!("mov {rm}, {size}{immediate}")
+}
+
+fn parse_memory_to_accumulator(bytes: &Vec<u8>, cursor: &mut usize) -> String {
+    let first_byte = bytes[*cursor];
+    *cursor += 1;
+
+    let w_bit = first_byte & 0x1;
+
+    if w_bit == 1 {
+        let addr_lo = bytes[*cursor];
+        let addr_hi = bytes[*cursor + 1];
+        *cursor += 2;
+
+        let address = u16::from_ne_bytes([addr_lo, addr_hi]);
+        format!("mov ax, [{address}]")
+    } else {
+        let addr_lo = bytes[*cursor];
+        *cursor += 1;
+
+        format!("mov al, [{addr_lo}]")
+    }
+}
+
+fn parse_accumulator_to_memory(bytes: &Vec<u8>, cursor: &mut usize) -> String {
+    let first_byte = bytes[*cursor];
+    *cursor += 1;
+
+    let w_bit = first_byte & 0x1;
+
+    if w_bit == 1 {
+        let addr_lo = bytes[*cursor];
+        let addr_hi = bytes[*cursor + 1];
+        *cursor += 2;
+
+        let address = u16::from_ne_bytes([addr_lo, addr_hi]);
+        format!("mov [{address}], ax")
+    } else {
+        let addr_lo = bytes[*cursor];
+        *cursor += 1;
+
+        let address = addr_lo;
+        format!("mov [{address}], al")
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -160,9 +327,20 @@ fn main() {
                 asm.push_str("\n");
                 asm.push_str(&parse_immediate_to_register(&file, &mut cursor));
             }
-            _ => {
+            Mov::ImmediateToRegisterOrMemory => {
                 asm.push_str("\n");
-                asm.push_str("unimplemented");
+                asm.push_str(&parse_immediate_to_register_or_memory(&file, &mut cursor));
+            },
+            Mov::MemoryToAccumulator => {
+                asm.push_str("\n");
+                asm.push_str(&parse_memory_to_accumulator(&file, &mut cursor));
+            },
+            Mov::AccumulatorToMemory => {
+                asm.push_str("\n");
+                asm.push_str(&parse_accumulator_to_memory(&file, &mut cursor));
+            }
+            _ => {
+                panic!("found unimplemented op")
             }
         }
     }
@@ -172,8 +350,8 @@ fn main() {
         return;
     }
 
-    // maybe in the future I'll write a proper args parser 
-    // and then add a -o, --output argument and only 
+    // maybe in the future I'll write a proper args parser
+    // and then add a -o, --output argument and only
     // generate an output file if it's set and use its
     // value as the output file name
     write("output", &asm).expect("error trying to write to file");
