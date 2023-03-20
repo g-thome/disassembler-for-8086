@@ -142,8 +142,8 @@ fn parse_register_or_memory_to_or_from_register(bytes: &Vec<u8>, cursor: &mut us
 
 fn parse_immediate_to_register(bytes: &Vec<u8>, cursor: &mut usize) -> String {
     let first_byte = bytes[*cursor];
-    let second_byte = bytes[*cursor + 1];
-    let third_byte = bytes[*cursor + 2];
+    let data_lo = bytes[*cursor + 1];
+    *cursor += 2;
 
     let w_bit = (first_byte >> 3) & 0x1;
     let register_bits = first_byte & 0x07;
@@ -151,12 +151,12 @@ fn parse_immediate_to_register(bytes: &Vec<u8>, cursor: &mut usize) -> String {
     let register: &str;
 
     if w_bit == 1 {
-        *cursor += 3;
-        immediate = u16::from_ne_bytes([second_byte, third_byte]);
+        let data_hi = bytes[*cursor];
+        *cursor += 1;
+        immediate = u16::from_ne_bytes([data_lo, data_hi]);
         register = WORD_REGISTERS[register_bits as usize];
     } else {
-        *cursor += 2;
-        immediate = second_byte as u16;
+        immediate = data_lo as u16;
         register = BYTE_REGISTERS[register_bits as usize];
     }
 
@@ -325,11 +325,11 @@ fn main() {
             Mov::ImmediateToRegisterOrMemory => {
                 asm.push_str("\n");
                 asm.push_str(&parse_immediate_to_register_or_memory(&file, &mut cursor));
-            },
+            }
             Mov::MemoryToAccumulator => {
                 asm.push_str("\n");
                 asm.push_str(&parse_memory_to_accumulator(&file, &mut cursor));
-            },
+            }
             Mov::AccumulatorToMemory => {
                 asm.push_str("\n");
                 asm.push_str(&parse_accumulator_to_memory(&file, &mut cursor));
