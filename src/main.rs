@@ -50,6 +50,26 @@ enum Opcode {
     CmpRegisterOrMemoryAndRegister,
     CmpImmediateWithRegisterOrMemory,
     CmpImmediateWithAccumulator,
+    JumpOnEqual,
+    JumpOnLess,
+    JumpOnLessOrEqual,
+    JumpOnBelow,
+    JumpOnBelowOrEqual,
+    JumpOnParity,
+    JumpOnOverflow,
+    JumpOnSign,
+    JumpOnNotEqual,
+    JumpOnNotLess,
+    JumpOnNotLessOrEqual,
+    JumpOnNotBelow,
+    JumpOnNotBelowOrEqual,
+    JumpOnNotPar,
+    JumpOnNotOverflow,
+    JumpOnNotSign,
+    LoopCXTimes,
+    LoopWhileZero,
+    LoopWhileNotZero,
+    JumpOnCXZero,
 }
 
 fn as_opcode_enum(bytes: [u8; 2]) -> Option<Opcode> {
@@ -118,6 +138,86 @@ fn as_opcode_enum(bytes: [u8; 2]) -> Option<Opcode> {
 
     if bytes[0] >> 1 == 0b0011110 {
         return Some(Opcode::CmpImmediateWithAccumulator);
+    }
+
+    if bytes[0] == 0b01110100 {
+        return Some(Opcode::JumpOnEqual);
+    }
+
+    if bytes[0] == 0b01111100 {
+        return Some(Opcode::JumpOnLess);
+    }
+
+    if bytes[0] == 0b01111110 {
+        return Some(Opcode::JumpOnLessOrEqual);
+    }
+
+    if bytes[0] == 0b01110010 {
+        return Some(Opcode::JumpOnBelow);
+    }
+
+    if bytes[0] == 0b01110110 {
+        return Some(Opcode::JumpOnBelowOrEqual);
+    }
+
+    if bytes[0] == 0b01111010 {
+        return Some(Opcode::JumpOnParity);
+    }
+
+    if bytes[0] == 0b01110000 {
+        return Some(Opcode::JumpOnOverflow);
+    }
+
+    if bytes[0] == 0b01111000 {
+        return Some(Opcode::JumpOnSign);
+    }
+
+    if bytes[0] == 0b01110101 {
+        return Some(Opcode::JumpOnNotEqual);
+    }
+
+    if bytes[0] == 0b01111101 {
+        return Some(Opcode::JumpOnNotLess);
+    }
+
+    if bytes[0] == 0b01111111 {
+        return Some(Opcode::JumpOnNotLessOrEqual);
+    }
+
+    if bytes[0] == 0b01110011 {
+        return Some(Opcode::JumpOnNotBelow);
+    }
+
+    if bytes[0] == 0b01110111 {
+        return Some(Opcode::JumpOnNotBelowOrEqual);
+    }
+
+    if bytes[0] == 0b01111011 {
+        return Some(Opcode::JumpOnNotPar);
+    }
+
+    if bytes[0] == 0b01110001 {
+        return Some(Opcode::JumpOnNotOverflow);
+    }
+
+    if bytes[0] == 0b01111001 {
+        return Some(Opcode::JumpOnNotSign);
+    }
+
+    if bytes[0] == 0b11100010 {
+        return Some(Opcode::LoopCXTimes);
+    }
+
+    if bytes[0] == 0b11100001 {
+        return Some(Opcode::LoopWhileZero);
+    }
+
+    if bytes[0] == 0b11100000 {
+        return Some(Opcode::LoopWhileNotZero);
+    }
+
+    if bytes[0] == 0b11100011 {
+        return Some(Opcode::JumpOnCXZero);
     }
 
     None
@@ -416,6 +516,38 @@ fn parse_immediate_to_accumulator(bytes: &Vec<u8>, cursor: &mut usize) -> String
     }
 }
 
+fn parse_jump(bytes: &Vec<u8>, cursor: &mut usize) -> String {
+    let first_byte = bytes[*cursor];
+    let ip_inc8 = bytes[*cursor + 1] as i8;
+    *cursor += 2;
+
+    let mnemonic = match first_byte {
+        0b01110100 => "je",
+        0b01111100 => "jl",
+        0b01111110 => "jle",
+        0b01110010 => "jb",
+        0b01110110 => "jbe",
+        0b01111010 => "jp",
+        0b01110000 => "jo",
+        0b01111000 => "js",
+        0b01110101 => "jne",
+        0b01111101 => "jnl",
+        0b01111111 => "jnle",
+        0b01110011 => "jnb",
+        0b01110111 => "jnbe",
+        0b01111011 => "jnp",
+        0b01110001 => "jno",
+        0b01111001 => "jns",
+        0b11100010 => "loop",
+        0b11100001 => "loopz",
+        0b11100000 => "loopnz",
+        0b11100011 => "jcxz",
+        _ => "",
+    };
+
+    format!("{mnemonic} {ip_inc8}")
+}
+
 fn parse_bin(bin: Vec<u8>) -> String {
     let mut cursor = 0;
     let mut asm = String::from("bits 16\n\n");
@@ -461,6 +593,29 @@ fn parse_bin(bin: Vec<u8>) -> String {
             | Opcode::CmpImmediateWithAccumulator => {
                 asm.push_str("\n");
                 asm.push_str(&parse_immediate_to_accumulator(&bin, &mut cursor));
+            }
+            Opcode::JumpOnCXZero
+            | Opcode::LoopWhileNotZero
+            | Opcode::LoopWhileZero
+            | Opcode::LoopCXTimes
+            | Opcode::JumpOnNotSign
+            | Opcode::JumpOnNotOverflow
+            | Opcode::JumpOnNotPar
+            | Opcode::JumpOnNotBelowOrEqual
+            | Opcode::JumpOnNotBelow
+            | Opcode::JumpOnNotLessOrEqual
+            | Opcode::JumpOnNotLess
+            | Opcode::JumpOnNotEqual
+            | Opcode::JumpOnSign
+            | Opcode::JumpOnOverflow
+            | Opcode::JumpOnParity
+            | Opcode::JumpOnBelowOrEqual
+            | Opcode::JumpOnBelow
+            | Opcode::JumpOnLessOrEqual
+            | Opcode::JumpOnLess
+            | Opcode::JumpOnEqual => {
+                asm.push_str("\n");
+                asm.push_str(&parse_jump(&bin, &mut cursor));
             }
             _ => {
                 panic!("found unimplemented op")
